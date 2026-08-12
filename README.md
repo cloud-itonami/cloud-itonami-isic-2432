@@ -82,8 +82,41 @@ clojure -M:dev:test
 # Run the demo
 clojure -M:dev:run
 
+# Regenerate docs/samples/operator-console.html from a REAL actor run
+clojure -M:dev:render-html
+
 # Lint
 clojure -M:lint
+```
+
+### Operator console (`docs/samples/operator-console.html`)
+
+[`docs/samples/operator-console.html`](docs/samples/operator-console.html) is
+**generated at build time by driving the real actor**, not hand-written.
+`nonferrousmfg.render-html` seeds a real store, pushes 13 coordination requests
+through the real `nonferrousmfg.operation` StateGraph (advisor → governor →
+phase gate → commit/hold/approval, resuming the escalated ones as a human
+approver would), and renders the page from the resulting store and append-only
+ledger. Every number, id, disposition and hold reason on the page is read back
+out of that run; even the action-gate table is derived from the live
+`governor/allowed-ops` and `phase/phases` values, so it cannot drift from the
+code.
+
+The scenario reaches both dispositions on purpose: 4 commits (one phase-3
+auto-commit plus three human-approved) and 9 HARD holds covering all ten
+governor rules — holds that never reach a human. `-main` **refuses to write the
+file** if the ledger contains zero `:governor-hold` facts, so "the console shows
+a real hold" is a build-time invariant rather than a convention.
+
+Output is deterministic — the stack is offline and pure, draft record numbers
+come from a sequence rather than a clock, and no timestamp reaches the page, so
+reruns from the same seed are byte-identical:
+
+```bash
+S=$(mktemp -d)
+clojure -M:dev:render-html "$S/a.html"
+clojure -M:dev:render-html "$S/b.html"
+cmp "$S/a.html" "$S/b.html"   # byte-identical
 ```
 
 ## Status
