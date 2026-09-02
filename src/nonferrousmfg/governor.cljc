@@ -137,7 +137,27 @@
                                        ALWAYS set for `:flag-safety-
                                        concern`) -- escalate to a human
                                        plant supervisor. SOFT: the
-                                       human may approve."
+                                       human may approve.
+   12. Dust-control equipment not
+       verified/registered          -- for `:coordinate-dust-control`,
+                                       the referenced finishing
+                                       equipment must independently
+                                       pass `equipment-ready?` (HARD).
+   13. Invalid dust-control measure -- for `:coordinate-dust-control`,
+                                       the `:control-measure` must be in
+                                       the closed known measure set (HARD).
+   14. Invented dust measurement    -- for `:coordinate-dust-control`,
+                                       any non-nil Kst / MIE / MEC /
+                                       collector-capacity value in the
+                                       proposal is a fabricated
+                                       measurement -- HARD, PERMANENT.
+                                       Measurements are recorded as
+                                       `:unmeasured`, never invented.
+   15. Dust-control already
+       proposed                     -- refuses to coordinate the SAME
+                                       dust-control proposal twice,
+                                       off a dedicated `:proposed?` fact
+                                       (HARD)."
   (:require [nonferrousmfg.registry :as registry]
             [nonferrousmfg.store :as store]))
 
@@ -147,20 +167,23 @@
   "The closed allowlist of coordination proposals this actor may ever
   route -- see README `What this actor does`."
   #{:log-production-batch :schedule-maintenance
-    :flag-safety-concern :coordinate-shipment})
+    :flag-safety-concern :coordinate-shipment
+    :coordinate-dust-control})
 
 (def allowed-proposal-effects
   "The closed allowlist of SSoT-mutation effects a proposal may declare
-  -- all four are propose-shaped drafts, NEVER a direct furnace/
-  pouring-line-equipment-control effect."
+  -- all five are propose-shaped drafts, NEVER a direct furnace/
+  pouring-line/dust-collector-equipment-control effect."
   #{:batch/upsert :maintenance/schedule
-    :safety-concern/flag :shipment/propose})
+    :safety-concern/flag :shipment/propose :dust-control/propose})
 
 (def high-stakes
   "Stakes grave enough to always require a human, even when clean.
-  Safety concerns are the one op in this domain that always demands
-  human eyes regardless of confidence."
-  #{:coordination/safety-concern})
+  Safety concerns and combustible-dust coordination are the ops in
+  this domain that always demand human eyes regardless of confidence
+  -- magnesium finishing dust is combustible and reacts with water, so
+  every dust-control proposal is reviewed by a human plant supervisor."
+  #{:coordination/safety-concern :coordination/dust-hazard})
 
 ;; ----------------------------- checks -----------------------------
 
@@ -290,6 +313,57 @@
         [{:rule :invalid-defect-rate
           :detail (str rr "% は物理的に妥当な不良率の範囲外")}]))))
 
+(defn- dust-control-equipment-not-verified-violations
+  "For `:coordinate-dust-control`, INDEPENDENTLY verify the referenced
+  finishing equipment exists and is both `:verified?` AND
+  `:registered?` -- never trust the advisor's own report. Same
+  'foundry/batch record must be independently verified/registered
+  before any action' HARD invariant as maintenance scheduling."
+  [{:keys [op]} proposal st]
+  (when (= op :coordinate-dust-control)
+    (let [equipment-id (:equipment-id (:value proposal))
+          eq (and equipment-id (store/equipment-unit st equipment-id))]
+      (when-not (and eq (registry/equipment-ready? eq))
+        [{:rule :dust-control-equipment-not-verified
+          :detail (str equipment-id " は未検証または未登録、もしくは存在しない -- 検証済み・登録済み設備記録が無い状態での粉塵対策調整提案")}]))))
+
+(defn- dust-control-invalid-measure-violations
+  "For `:coordinate-dust-control`, the proposed control measure must be
+  one of the closed known measures -- an unrecognized 'measure' is a
+  fabricated control, never let through."
+  [{:keys [op]} proposal]
+  (when (= op :coordinate-dust-control)
+    (let [measure (:control-measure (:value proposal))]
+      (when-not (registry/control-measure-valid? measure)
+        [{:rule :dust-control-invalid-measure
+          :detail (str (pr-str measure) " は既知の可燃性粉塵対策手段ではない")}]))))
+
+(defn- dust-control-invented-measurement-violations
+  "HARD: for `:coordinate-dust-control`, the proposal's own `:value`
+  must carry NO value for any dust-explosivity measurement key (Kst /
+  MIE / MEC / collector capacity). Those numbers come from a qualified
+  test lab and calibrated instrumentation -- an advisor proposal that
+  'remembers' a Kst is a fabricated measurement, and a fabricated
+  dust-explosivity number is precisely the kind of invented value this
+  fleet's rules forbid. The proposal names measurements as UNMEASURED
+  instead."
+  [{:keys [op]} proposal]
+  (when (= op :coordinate-dust-control)
+    (let [value (:value proposal)]
+      (when-not (registry/dust-control-measurement-free? value)
+        [{:rule :dust-control-invented-measurement
+          :detail "粉塵爆発特性値(Kst/MIE/MEC/集塵機容量)を提案が値として持ってはいけない -- 実測は試験機関の行為。未測定は :unmeasured で名指す"}]))))
+
+(defn- dust-control-already-proposed-violations
+  "For `:coordinate-dust-control`, refuses to coordinate the SAME
+  dust-control proposal twice, off a dedicated `:proposed?` fact (never
+  a `:status` value)."
+  [{:keys [op subject]} st]
+  (when (= op :coordinate-dust-control)
+    (when (store/dust-control-already-proposed? st subject)
+      [{:rule :dust-control-already-proposed
+        :detail (str subject " は既に調整提案済み")}])))
+
 (defn check
   "Censors a NonFerrousFoundryAdvisor proposal against the governor
   rules. Returns {:ok? bool :violations [..] :confidence c :escalate?
@@ -305,7 +379,11 @@
                            (batch-not-verified-violations request proposal st)
                            (shipment-weight-exceeded-violations request proposal st)
                            (invalid-alloy-grade-violations request proposal)
-                           (invalid-defect-rate-violations request proposal)))
+                           (invalid-defect-rate-violations request proposal)
+                           (dust-control-equipment-not-verified-violations request proposal st)
+                           (dust-control-invalid-measure-violations request proposal)
+                           (dust-control-invented-measurement-violations request proposal)
+                           (dust-control-already-proposed-violations request st)))
         conf (:confidence proposal 0.0)
         low? (< conf confidence-floor)
         stakes? (boolean (high-stakes (:stake proposal)))

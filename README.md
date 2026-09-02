@@ -35,6 +35,7 @@ Proposes **plant operations coordination**, not equipment operation:
 - `:schedule-maintenance` — furnace/mold/shakeout/die-casting-equipment maintenance scheduling proposal
 - `:flag-safety-concern` — surface a molten-metal-hazard (splash/burn, furnace radiant-heat, mold/core-binder fume exposure, non-ferrous metal-fume exposure, die-casting clamping/injection hazard)/equipment-safety concern (always escalates)
 - `:coordinate-shipment` — outbound non-ferrous casting shipment coordination proposal
+- `:coordinate-dust-control` — combustible-dust control coordination proposal for the MAGNESIUM FINISHING CELL (grinding/deburring/polishing of magnesium castings — dust is combustible and reacts with water): housekeeping interval / dust-collector maintenance / ignition-source control / inerting review / dust-hazard-analysis scheduling draft (always escalates; dust-explosivity values Kst/MIE/MEC/collector capacity are always named as UNMEASURED, never invented)
 
 ## What this actor does NOT do
 
@@ -57,17 +58,22 @@ Classic governed-actor pattern (`nonferrousmfg.operation/build`, a langgraph-clj
    - HARD invariants (always `:hold`, no override):
      - Foundry/batch record must be independently verified/registered (`:verified?` AND `:registered?`) before any action is taken against it (equipment before maintenance scheduling, batch before shipment coordination)
      - The request's own `:effect` must be `:propose` (never a direct-write bypass)
-     - `:op` must be in the closed four-op allowlist
-     - The proposal's own `:effect` must be one of the four propose-shaped effects (no direct furnace/die-casting-machine/pouring-line-equipment control)
+     - `:op` must be in the closed five-op allowlist
+     - The proposal's own `:effect` must be one of the five propose-shaped effects (no direct furnace/die-casting-machine/pouring-line/dust-collector-equipment control)
      - Directly actuating the melting furnace, die-casting machine, or pouring line (`:actuate-furnace? true`) is a PERMANENT, unconditional block
      - A shipment may not push a batch's own recorded shipped weight past its own logged production weight (independently recomputed)
      - No double-scheduling the same maintenance record
      - No fabricated `:alloy-grade` value on a production-batch patch
      - No physically implausible `:defect-rate-percent` value on a production-batch patch
+     - No dust-control coordination against an unverified/unregistered finishing-equipment unit
+     - No unrecognized `:control-measure` on a dust-control proposal
+     - No INVENTED dust-explosivity measurement (Kst/MIE/MEC/collector capacity) in a dust-control proposal — PERMANENT block; measurements are recorded as `:unmeasured`
+     - No double-coordination of the same dust-control proposal
    - ESCALATE (always human sign-off, overridable by a human):
      - `:flag-safety-concern` always escalates, regardless of confidence
+     - `:coordinate-dust-control` always escalates, regardless of confidence (magnesium dust hazard)
      - Low-confidence proposals
-3. **`nonferrousmfg.phase`** (Phase 0->3 rollout): `:schedule-maintenance`/`:flag-safety-concern`/`:coordinate-shipment` are NEVER in any phase's `:auto` set (permanent, matching the governor's own posture); only `:log-production-batch` may auto-commit at phase 3 when clean
+3. **`nonferrousmfg.phase`** (Phase 0->3 rollout): `:schedule-maintenance`/`:flag-safety-concern`/`:coordinate-shipment`/`:coordinate-dust-control` are NEVER in any phase's `:auto` set (permanent, matching the governor's own posture); only `:log-production-batch` may auto-commit at phase 3 when clean
 4. **`nonferrousmfg.store`** (append-only audit ledger + SSoT): a single `MemStore` backend behind a `Store` protocol (see ns docstring for why a second Datomic-backed backend is out of scope for this build)
 
 ## Development
