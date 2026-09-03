@@ -82,6 +82,84 @@
   above this is implausible sensor/QC data, not a real batch."
   100.0)
 
+;; --------------------------- procurement constants ---------------------------
+
+(def valid-equipment-conditions
+  "The closed set of PHYSICAL CONDITION values an equipment-procurement
+  proposal may declare for the unit being sourced. `:unknown` is a
+  legal, honest declaration (the condition has not actually been
+  inspected) -- what is never legal is inventing a condition value
+  outside this set, or fabricating a specific condition for a unit
+  nobody has inspected."
+  #{:new :used :refurbished :unknown})
+
+(def valid-sourcing-routes
+  "The closed set of SOURCING ROUTE values an equipment-procurement
+  proposal may declare. The workspace's direct-first procurement rule
+  (90-docs/business/direct-procurement-rule.edn) makes
+  :direct-manufacturer and :owner-operated-dealer the default routes;
+  an intermediary (:distributor) is legal only with a recorded
+  value-add rationale; :unknown is an honest undeclared state. A
+  fabricated route value outside this set is never legal."
+  #{:direct-manufacturer :owner-operated-dealer :distributor :unknown})
+
+(def cost-claim-keys
+  "The closed set of total-cost-input claim fields a procurement
+  proposal may carry. Any cost/capacity number outside this closed set
+  is a fabricated measurement, not a recorded one."
+  #{:price-jpy :shipping-jpy :customs-jpy :installation-jpy
+    :lead-time-days :capacity-per-hour :cycle-time-s :utility-kw})
+
+;; --------------------------- procurement checks ---------------------------
+
+(defn procurement-condition-valid?
+  "Is `condition` one of the closed, known equipment-condition values?
+  nil/blank is treated as invalid -- a procurement draft must declare
+  the condition state it actually knows (which may honestly be
+  :unknown), never omit it silently."
+  [condition]
+  (contains? valid-equipment-conditions condition))
+
+(defn sourcing-route-valid?
+  "Is `route` one of the closed, known sourcing-route values?"
+  [route]
+  (contains? valid-sourcing-routes route))
+
+(defn cost-claim-measured?
+  "Is this ONE cost claim actually measured? A claim is measured only
+  when it carries a numeric `:value` AND a non-empty `:source` (the
+  quotation / published page it was read from) AND a non-empty
+  `:measured-at` (date). A bare number with no provenance is an
+  invented price -- the governor rejects it; the claim must instead be
+  left absent (:unmeasured)."
+  [claim]
+  (and (map? claim)
+       (number? (:value claim))
+       (string? (:source claim)) (not= "" (:source claim))
+       (string? (:measured-at claim)) (not= "" (:measured-at claim))))
+
+(defn invented-cost-claims
+  "Return the claim keys whose value is a NUMBER but whose provenance
+  (source / measured-at) is missing -- i.e. numbers that look like
+  measurements but are not. An empty result means every present claim
+  is either properly measured or properly absent (unmeasured values
+  are left OUT of the proposal, never guessed)."
+  [cost-claims]
+  (into []
+        (comp (filter #(map? (val %)))
+              (filter #(number? (:value (val %))))
+              (remove #(cost-claim-measured? (val %)))
+              (map key))
+        cost-claims))
+
+(defn unknown-cost-claim-keys
+  "Return the claim keys outside the closed `cost-claim-keys` set --
+  a fabricated cost field, not a real quotation field."
+  [cost-claims]
+  (into []
+        (remove #(contains? cost-claim-keys (key %)))
+        cost-claims))
+
 ;; ----------------------------- equipment checks -----------------------------
 
 (defn equipment-verified?
@@ -231,6 +309,33 @@
                 "immutable" true}]
     {"record" record "maintenance_number" maintenance-number
      "certificate" (unsigned-certificate "MaintenanceSchedule" maintenance-number maintenance-number)}))
+
+(defn register-procurement
+  "Validate + construct the EQUIPMENT-PROCUREMENT DRAFT -- a proposed
+  sourcing draft for a melting-furnace / die-casting-machine / inert-
+  handling unit, with its physical condition and sourcing route
+  declared from the closed sets and its cost claims either measured
+  (source + measured-at on record) or absent (unmeasured -- never
+  guessed). Pure function -- does not issue a purchase order, commit
+  funds, or contact any seller; it builds the RECORD a plant
+  coordinator would keep. `nonferrousmfg.governor` independently
+  re-validates the condition/route closed sets and rejects any cost
+  claim that looks like a number but has no provenance, before this is
+  ever allowed to commit."
+  [procurement-id sequence]
+  (when-not (and procurement-id (not= procurement-id ""))
+    (throw (ex-info "procurement: procurement_id required" {})))
+  (when (< sequence 0)
+    (throw (ex-info "procurement: sequence must be >= 0" {})))
+  (let [procurement-number (str "PRO-" (zero-pad sequence 6))
+        record {"record_id" procurement-number
+                "kind" "equipment-procurement-draft"
+                "procurement_id" procurement-id
+                "immutable" true}]
+    {"record" record "procurement_number" procurement-number
+     "certificate" (unsigned-certificate "EquipmentProcurement"
+                                         procurement-number
+                                         procurement-number)}))
 
 (defn register-shipment
   "Validate + construct the SHIPMENT-COORDINATION DRAFT -- a proposed

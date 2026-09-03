@@ -25,7 +25,7 @@ of iron and steel): both are back-office coordination actors for a
 fixed processing PLANT with heavy manufacturing equipment and a real
 physical safety dimension, and both share the same four-op shape
 (`:log-production-batch`/`:schedule-maintenance`/`:flag-safety-
-concern`/`:coordinate-shipment`) and the same two-entity verified/
+concern`/`:coordinate-shipment`/`:coordinate-equipment-procurement`) and the same two-entity verified/
 registered gate structure (equipment for maintenance scheduling, batch
 for shipment coordination). The two verticals are, however, distinct
 plants with distinct hazard and process profiles: 2431 melts and pours
@@ -135,7 +135,8 @@ proposals and cannot be overridden by human approval:
 1. Foundry/batch record (equipment for maintenance, batch for shipment) must be independently verified/registered before any action is taken against it, and a shipment's weight must independently recompute within the batch's own logged production weight
 2. Proposals must be `:effect :propose` only (never direct equipment control)
 3. Direct melting-furnace/die-casting-machine/pouring-line-equipment control or furnace actuation is permanently blocked
-4. The op allowlist is closed — `:log-production-batch`/`:schedule-maintenance`/`:flag-safety-concern`/`:coordinate-shipment` only
+4. The op allowlist is closed — `:log-production-batch`/`:schedule-maintenance`/`:flag-safety-concern`/`:coordinate-shipment`/`:coordinate-equipment-procurement` only
+5. For `:coordinate-equipment-procurement`: the declared physical condition and sourcing route must be from the closed sets (fabricated values, or a silently omitted condition, are rejected — `:unknown` is the honest state), every cost claim carrying a number must carry its own provenance (`:source` + `:measured-at` — a bare number is an invented price), the claim fields are a closed set, the equipment class must be named, and the same record cannot be proposed twice. Approval is always human: a procurement approval becomes a real financial commitment (purchase order / payment), which this actor never performs.
 
 ## Consequences
 

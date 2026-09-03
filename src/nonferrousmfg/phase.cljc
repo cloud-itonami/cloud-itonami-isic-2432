@@ -33,11 +33,17 @@
 
 (def write-ops
   #{:log-production-batch :schedule-maintenance
-    :flag-safety-concern :coordinate-shipment})
+    :flag-safety-concern :coordinate-shipment
+    :coordinate-equipment-procurement})
 
 ;; NOTE the invariant: `:schedule-maintenance` is a member of
 ;; `write-ops` (governor-gated like any write) but is NEVER a member of
-;; any phase's `:auto` set below. Do not add it there.
+;; any phase's `:auto` set below. Do not add it there. The same holds
+;; for `:coordinate-equipment-procurement` -- it is additionally
+;; high-stakes (a procurement approval becomes a real financial
+;; commitment), so the governor's confidence/high-stakes gate and the
+;; phase auto sets BOTH keep it out of auto-commit. Do not add it to
+;; any phase's `:auto` set.
 (def phases
   "phase -> {:label .. :writes <ops allowed to write> :auto <ops allowed
   to auto-commit when governor-clean>}."
