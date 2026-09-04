@@ -145,6 +145,35 @@
      :stake      nil
      :confidence (if (and ready? (not over-weight?)) 0.9 0.3)}))
 
+(defn- coordinate-equipment-procurement
+  "Draft an equipment-procurement coordination proposal -- a sourcing
+  draft for a melting-furnace / die-casting-machine / inert-handling
+  unit. The advisor passes through the caller's own condition /
+  sourcing-route / cost-claim declarations -- it does NOT invent a
+  condition, a price, a lead time, or a certification, and
+  `nonferrousmfg.governor` NEVER trusts any of it: it independently
+  re-validates the closed sets and rejects any cost claim that carries
+  a number without provenance before any commit is possible. The
+  proposal is ALWAYS `:stake :coordination/equipment-procurement` --
+  a procurement commitment is always grave enough to require a human
+  approver, no matter how clean the draft."
+  [db {:keys [subject value]}]
+  (let [equipment-class (:equipment-class value)]
+    {:summary    (str subject " 向け設備調達提案 ("
+                      (:equipment-class value) " / "
+                      (:condition value) " / "
+                      (:sourcing-route value) ")")
+     :rationale  (str "equipment-class=" equipment-class
+                      " condition=" (:condition value)
+                      " sourcing-route=" (:sourcing-route value)
+                      " measured-claims=" (vec (keys (:cost-claims value)))
+                      " 未計測値は提案に含めない(発注・支払・価格確定は人間の承認行為)")
+     :cites      (if equipment-class [:cost-claims] [])
+     :effect     :equipment-procurement/propose
+     :value      value
+     :stake      :coordination/equipment-procurement
+     :confidence 0.9}))
+
 (defn infer
   "Route a request to the right proposal generator.
   request: {:op kw :effect :propose :subject id ...op-specific...}"
@@ -154,6 +183,7 @@
     :schedule-maintenance      (schedule-maintenance db request)
     :flag-safety-concern       (flag-safety-concern db request)
     :coordinate-shipment       (coordinate-shipment db request)
+    :coordinate-equipment-procurement (coordinate-equipment-procurement db request)
     {:summary "未対応の操作" :rationale (str op) :cites []
      :effect :noop :stake nil :confidence 0.0}))
 
@@ -174,11 +204,14 @@
        "キー: :summary(人向けドラフト) :rationale(根拠/必ず事実から) "
        ":cites(使った事実キーのベクタ) "
        ":effect(:batch/upsert|:maintenance/schedule|"
-       ":safety-concern/flag|:shipment/propose) "
+       ":safety-concern/flag|:shipment/propose|"
+       ":equipment-procurement/propose) "
        ":stake(:coordination/safety-concern か nil) :confidence(0..1)。\n"
        "重要: 未検証または未登録の設備・バッチに対する作業を提案してはいけません。"
        "溶解炉・ダイカストマシン・注湯ライン等の設備の直接操作(actuate)を絶対に提案してはいけません"
        "(この actor は提案のみを行い、実行は一切行いません)。"
+       "設備調達提案では、実測していない価格・納期・能力・認証を絶対に生成してはいけません"
+       "(未計測値は提案から省く)。発注・支払・売買契約は人間の承認行為です。"
        "出荷量を偽って報告してはいけません。"))
 
 (defn- facts-for [st {:keys [op subject value]}]
@@ -188,6 +221,7 @@
     :flag-safety-concern        {:equipment (and (:equipment-id value)
                                                   (store/equipment-unit st (:equipment-id value)))}
     :coordinate-shipment        {:batch (store/batch st (:batch-id value))}
+    :coordinate-equipment-procurement {}
     {}))
 
 (defn- parse-proposal

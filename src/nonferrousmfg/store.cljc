@@ -69,13 +69,17 @@
   (maintenance [s id])
   (all-maintenance [s])
   (shipment [s id])
+  (procurement [s id] "an equipment-procurement DRAFT (nonferrousmfg.registry/register-procurement)")
   (safety-concerns [s] "the append-only safety-concern log")
   (ledger [s])
   (maintenance-history [s] "the append-only maintenance-schedule history (nonferrousmfg.registry drafts)")
   (shipment-history [s] "the append-only shipment-coordination history (nonferrousmfg.registry drafts)")
+  (procurement-history [s] "the append-only equipment-procurement history (nonferrousmfg.registry drafts)")
   (next-maintenance-sequence [s] "next maintenance-number sequence")
   (next-shipment-sequence [s] "next shipment-number sequence")
+  (next-procurement-sequence [s] "next procurement-number sequence")
   (maintenance-already-scheduled? [s maintenance-id] "has this maintenance window already been scheduled?")
+  (procurement-already-proposed? [s procurement-id] "has this equipment-procurement draft already been proposed?")
   (commit-record! [s record] "apply a committed op's record to the SSoT")
   (append-ledger! [s fact] "append one immutable decision fact")
   (get-records [s] "the generic id -> raw-record map (domain-agnostic commit-record! path)")
@@ -135,6 +139,17 @@
     {:result result
      :patch {:shipment-number (get result "shipment_number")}}))
 
+(defn- propose-procurement!
+  "Backend-agnostic `:equipment-procurement/propose` -- drafts the
+  equipment-procurement record via `nonferrousmfg.registry` and
+  returns {:result .. :patch ..} for the caller to persist."
+  [s procurement-id]
+  (let [seq-n (next-procurement-sequence s)
+        result (registry/register-procurement procurement-id seq-n)]
+    {:result result
+     :patch {:proposed? true
+             :procurement-number (get result "procurement_number")}}))
+
 ;; ----------------------------- MemStore (default) -----------------------------
 
 (defrecord MemStore [a]
@@ -146,14 +161,19 @@
   (maintenance [_ id] (get-in @a [:maintenance id]))
   (all-maintenance [_] (sort-by :id (vals (:maintenance @a))))
   (shipment [_ id] (get-in @a [:shipments id]))
+  (procurement [_ id] (get-in @a [:procurement id]))
   (safety-concerns [_] (:safety-concerns @a))
   (ledger [_] (:ledger @a))
   (maintenance-history [_] (:maintenance-history @a))
   (shipment-history [_] (:shipment-history @a))
+  (procurement-history [_] (:procurement-history @a))
   (next-maintenance-sequence [_] (:maintenance-sequence @a 0))
   (next-shipment-sequence [_] (:shipment-sequence @a 0))
+  (next-procurement-sequence [_] (:procurement-sequence @a 0))
   (maintenance-already-scheduled? [_ maintenance-id]
     (boolean (get-in @a [:maintenance maintenance-id :scheduled?])))
+  (procurement-already-proposed? [_ procurement-id]
+    (boolean (get-in @a [:procurement procurement-id :proposed?])))
   (get-records [_] (:records @a))
   (commit-record! [s {:keys [effect path value] :as record}]
     (cond
@@ -194,6 +214,16 @@
                                        (double (or (:weight-kg value) 0.0))))))))
         result)
 
+      (= effect :equipment-procurement/propose)
+      (let [procurement-id (first path)
+            {:keys [result patch]} (propose-procurement! s procurement-id)]
+        (swap! a (fn [state]
+                   (-> state
+                       (update :procurement-sequence (fnil inc 0))
+                       (update-in [:procurement procurement-id] merge (assoc value :id procurement-id) patch)
+                       (update :procurement-history registry/append result))))
+        result)
+
       ;; Domain-agnostic path: a raw record with an :id and no :effect
       ;; is written verbatim into the generic `records` map -- the
       ;; store-level primitive underneath the domain-specific dispatch
@@ -212,9 +242,10 @@
   "A fresh, empty MemStore."
   []
   (->MemStore (atom {:batches {} :equipment {} :maintenance {} :shipments {}
-                      :records {} :safety-concerns []
-                      :ledger [] :maintenance-sequence 0 :maintenance-history []
-                      :shipment-sequence 0 :shipment-history []})))
+                     :procurement {} :records {} :safety-concerns []
+                     :ledger [] :maintenance-sequence 0 :maintenance-history []
+                     :shipment-sequence 0 :shipment-history []
+                     :procurement-sequence 0 :procurement-history []})))
 
 (defn sample-data!
   "Seeds `s` (a MemStore) with a small, self-contained batch + equipment

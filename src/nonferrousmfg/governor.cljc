@@ -147,20 +147,27 @@
   "The closed allowlist of coordination proposals this actor may ever
   route -- see README `What this actor does`."
   #{:log-production-batch :schedule-maintenance
-    :flag-safety-concern :coordinate-shipment})
+    :flag-safety-concern :coordinate-shipment
+    :coordinate-equipment-procurement})
 
 (def allowed-proposal-effects
   "The closed allowlist of SSoT-mutation effects a proposal may declare
-  -- all four are propose-shaped drafts, NEVER a direct furnace/
-  pouring-line-equipment-control effect."
+  -- all five are propose-shaped drafts, NEVER a direct furnace/
+  pouring-line-equipment-control effect, a purchase-order issue, or a
+  funds-committing act."
   #{:batch/upsert :maintenance/schedule
-    :safety-concern/flag :shipment/propose})
+    :safety-concern/flag :shipment/propose
+    :equipment-procurement/propose})
 
 (def high-stakes
   "Stakes grave enough to always require a human, even when clean.
-  Safety concerns are the one op in this domain that always demands
-  human eyes regardless of confidence."
-  #{:coordination/safety-concern})
+  Safety concerns and equipment-procurement commitments are the two
+  ops in this domain that always demand human eyes regardless of
+  confidence -- a safety concern because it is a safety concern, a
+  procurement draft because approving it becomes a real financial
+  commitment (purchase order / payment), which is always the human
+  approver's act, never this actor's."
+  #{:coordination/safety-concern :coordination/equipment-procurement})
 
 ;; ----------------------------- checks -----------------------------
 
@@ -290,6 +297,79 @@
         [{:rule :invalid-defect-rate
           :detail (str rr "% は物理的に妥当な不良率の範囲外")}]))))
 
+(defn- invalid-procurement-condition-violations
+  "For `:coordinate-equipment-procurement`, the declared physical
+  condition must be one of the closed known values
+  (`registry/valid-equipment-conditions`). nil (silently omitted) and
+  fabricated values are both rejected -- `:unknown` is the honest way
+  to say nobody has inspected the unit yet."
+  [{:keys [op]} proposal]
+  (when (= op :coordinate-equipment-procurement)
+    (let [condition (:condition (:value proposal))]
+      (when-not (registry/procurement-condition-valid? condition)
+        [{:rule :invalid-procurement-condition
+          :detail (str condition " は既知の equipment-condition 値ではない"
+                       " (許可: :new :used :refurbished :unknown)")}]))))
+
+(defn- invalid-sourcing-route-violations
+  "For `:coordinate-equipment-procurement`, the declared sourcing route
+  must be one of the closed known values
+  (`registry/valid-sourcing-routes`) -- direct-first by default,
+  intermediary routes recorded as such."
+  [{:keys [op]} proposal]
+  (when (= op :coordinate-equipment-procurement)
+    (let [route (:sourcing-route (:value proposal))]
+      (when-not (registry/sourcing-route-valid? route)
+        [{:rule :invalid-sourcing-route
+          :detail (str route " は既知の sourcing-route 値ではない"
+                       " (許可: :direct-manufacturer :owner-operated-dealer"
+                       " :distributor :unknown)")}]))))
+
+(defn- invented-cost-claim-violations
+  "For `:coordinate-equipment-procurement`, every cost claim that
+  carries a NUMBER must carry its own provenance (`:source` +
+  `:measured-at`). A bare number is an invented price/lead-time/
+  capacity reading -- reject; the honest proposal leaves unmeasured
+  values absent. Also rejects claim keys outside the closed
+  `registry/cost-claim-keys` set."
+  [{:keys [op]} proposal]
+  (when (= op :coordinate-equipment-procurement)
+    (let [claims (:cost-claims (:value proposal))
+          unknown-keys (registry/unknown-cost-claim-keys claims)
+          invented (registry/invented-cost-claims claims)]
+      (cond
+        (seq unknown-keys)
+        [{:rule :invented-cost-claim
+          :detail (str "cost-claim キー " (vec unknown-keys)
+                       " はこの actor が扱う調達費目の許可リストに無い")}]
+
+        (seq invented)
+        [{:rule :invented-cost-claim
+          :detail (str "claim " (vec invented)
+                       " は数値を持ちながら出典(:source)・測定日(:measured-at)が無い"
+                       " -- 未計測値は提案に含めず省略すること")}]))))
+
+(defn- missing-procurement-class-violations
+  "For `:coordinate-equipment-procurement`, the proposal must name the
+  equipment class it is sourcing -- a procurement draft with no class
+  would let the commit path record a sourcing commitment to nothing."
+  [{:keys [op]} proposal]
+  (when (= op :coordinate-equipment-procurement)
+    (let [klass (:equipment-class (:value proposal))]
+      (when-not (and (string? klass) (not= "" klass))
+        [{:rule :missing-procurement-class
+          :detail "equipment-class が空 -- 何を調達するのか名指しされていない提案"}]))))
+
+(defn- already-proposed-violations
+  "For `:coordinate-equipment-procurement`, refuses to propose the SAME
+  procurement record twice, off a dedicated `:proposed?` fact (never a
+  `:status` value)."
+  [{:keys [op subject]} st]
+  (when (= op :coordinate-equipment-procurement)
+    (when (store/procurement-already-proposed? st subject)
+      [{:rule :already-proposed
+        :detail (str subject " は既に提案済み")}])))
+
 (defn check
   "Censors a NonFerrousFoundryAdvisor proposal against the governor
   rules. Returns {:ok? bool :violations [..] :confidence c :escalate?
@@ -302,10 +382,15 @@
                            (furnace-actuate-blocked-violations request proposal)
                            (equipment-not-verified-violations request proposal st)
                            (already-scheduled-violations request st)
+                           (already-proposed-violations request st)
                            (batch-not-verified-violations request proposal st)
                            (shipment-weight-exceeded-violations request proposal st)
                            (invalid-alloy-grade-violations request proposal)
-                           (invalid-defect-rate-violations request proposal)))
+                           (invalid-defect-rate-violations request proposal)
+                           (invalid-procurement-condition-violations request proposal)
+                           (invalid-sourcing-route-violations request proposal)
+                           (invented-cost-claim-violations request proposal)
+                           (missing-procurement-class-violations request proposal)))
         conf (:confidence proposal 0.0)
         low? (< conf confidence-floor)
         stakes? (boolean (high-stakes (:stake proposal)))

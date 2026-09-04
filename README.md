@@ -35,6 +35,7 @@ Proposes **plant operations coordination**, not equipment operation:
 - `:schedule-maintenance` — furnace/mold/shakeout/die-casting-equipment maintenance scheduling proposal
 - `:flag-safety-concern` — surface a molten-metal-hazard (splash/burn, furnace radiant-heat, mold/core-binder fume exposure, non-ferrous metal-fume exposure, die-casting clamping/injection hazard)/equipment-safety concern (always escalates)
 - `:coordinate-shipment` — outbound non-ferrous casting shipment coordination proposal
+- `:coordinate-equipment-procurement` — equipment sourcing DRAFT (PRO-######) with declared physical condition (`:new`/`:used`/`:refurbished`/`:unknown`), declared sourcing route (direct-first: `:direct-manufacturer`/`:owner-operated-dealer`/`:distributor`/`:unknown`), and cost claims that are either measured (own `:source` + `:measured-at` on record) or ABSENT — unmeasured price/lead-time/capacity values are never guessed. Always escalates (human approval); the actor never issues a purchase order or commits funds.
 
 ## What this actor does NOT do
 
