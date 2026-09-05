@@ -159,6 +159,46 @@
   (into []
         (remove #(contains? cost-claim-keys (key %)))
         cost-claims))
+;; ----------------------------- magnesium finishing / combustible-dust checks -----------------------------
+
+(def valid-control-measures
+  "The closed set of combustible-dust control measures a
+  `:coordinate-dust-control` proposal may coordinate -- coordination-
+  level housekeeping/engineering/administrative measures for the
+  MAGNESIUM FINISHING CELL (grinding/deburring/polishing of magnesium
+  castings, whose fine dust is combustible and reacts with water).
+  Anything else is an unrecognized measure. Note what is deliberately
+  ABSENT: no equipment actuation, no DHA sign-off, no certification --
+  a dust-hazard analysis sign-off and any certification are the plant
+  supervisor's / a qualified evaluator's exclusive human acts."
+  #{:housekeeping-interval :dust-collector-maintenance
+    :ignition-source-control :inerting-review :dha-scheduling})
+
+(def invented-measurement-keys
+  "Closed set of dust-explosivity MEASUREMENT keys this actor must
+  never carry a value for -- Kst, minimum ignition energy, minimum
+  explosible concentration, and dust-collector capacity are measured
+  by a qualified test lab / calibrated instrumentation, never invented
+  by an advisor proposal. A `:coordinate-dust-control` value declaring
+  any of these with a non-nil value is a fabricated measurement and is
+  HARD-held (the proposal still names the measurement as MISSING via
+  `:unmeasured` -- see `register-dust-control`)."
+  #{:kst-bar-m-s :mie-mj :mec-g-m3 :collector-capacity-m3-h})
+
+(defn control-measure-valid?
+  "Is `measure` one of the closed, known combustible-dust control
+  measures? nil is treated as invalid (a dust-control proposal must
+  name a real measure, not omit it silently)."
+  [measure]
+  (contains? valid-control-measures measure))
+
+(defn dust-control-measurement-free?
+  "Ground-truth check for a `:coordinate-dust-control` proposal value:
+  does it carry a VALUE for any dust-explosivity measurement key this
+  actor must never invent? Returns true (measurement-free) only when
+  every key in `invented-measurement-keys` is absent or nil."
+  [value]
+  (not-any? some? (map (fn [k] (get value k)) invented-measurement-keys)))
 
 ;; ----------------------------- equipment checks -----------------------------
 
@@ -357,6 +397,37 @@
                 "immutable" true}]
     {"record" record "shipment_number" shipment-number
      "certificate" (unsigned-certificate "ShipmentCoordination" shipment-number shipment-number)}))
+
+(defn register-dust-control
+  "Validate + construct the DUST-CONTROL COORDINATION DRAFT -- a
+  proposed combustible-dust control measure (housekeeping interval /
+  dust-collector maintenance / ignition-source control / inerting
+  review / dust-hazard-analysis scheduling) for the MAGNESIUM FINISHING
+  CELL against a verified, registered piece of finishing equipment.
+  Pure function -- does not actuate any collector or interlock and does
+  not perform or sign off a dust-hazard analysis; it builds the RECORD
+  a plant coordinator would keep. Dust-explosivity measurements (Kst,
+  MIE, MEC, collector capacity) are always recorded as UNMEASURED --
+  the proposal names what is missing, it never supplies a value.
+  `nonferrousmfg.governor` independently re-verifies the equipment's
+  own verified/registered ground truth, the measure's membership in
+  the closed set, and the value's measurement-freeness before this is
+  ever allowed to commit."
+  [dust-control-id equipment-id sequence]
+  (when-not (and dust-control-id (not= dust-control-id ""))
+    (throw (ex-info "dust-control: dust_control_id required" {})))
+  (when-not (and equipment-id (not= equipment-id ""))
+    (throw (ex-info "dust-control: equipment_id required" {})))
+  (when (< sequence 0)
+    (throw (ex-info "dust-control: sequence must be >= 0" {})))
+  (let [dust-control-number (str "DCD-" (zero-pad sequence 6))
+        record {"record_id" dust-control-number
+                "kind" "dust-control-draft"
+                "dust_control_id" dust-control-id
+                "equipment_id" equipment-id
+                "immutable" true}]
+    {"record" record "dust_control_number" dust-control-number
+     "certificate" (unsigned-certificate "DustControlCoordination" dust-control-number dust-control-number)}))
 
 (defn append [history result]
   (conj (vec history) (get result "record")))

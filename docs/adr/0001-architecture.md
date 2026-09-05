@@ -23,9 +23,11 @@ pattern established across the cloud-itonami fleet.
 The closest architectural analog is `cloud-itonami-isic-2431` (Casting
 of iron and steel): both are back-office coordination actors for a
 fixed processing PLANT with heavy manufacturing equipment and a real
-physical safety dimension, and both share the same four-op shape
-(`:log-production-batch`/`:schedule-maintenance`/`:flag-safety-
-concern`/`:coordinate-shipment`/`:coordinate-equipment-procurement`) and the same two-entity verified/
+physical safety dimension, and both share the same coordination-actor
+shape (`:log-production-batch`/`:schedule-maintenance`/`:flag-safety-
+concern`/`:coordinate-shipment`/`:coordinate-equipment-procurement`,
+plus this vertical's own `:coordinate-dust-control` for the magnesium
+finishing cell's combustible-dust hazards) and the same two-entity verified/
 registered gate structure (equipment for maintenance scheduling, batch
 for shipment coordination). The two verticals are, however, distinct
 plants with distinct hazard and process profiles: 2431 melts and pours

@@ -173,6 +173,31 @@
      :value      value
      :stake      :coordination/equipment-procurement
      :confidence 0.9}))
+(defn- coordinate-dust-control
+  "Draft a combustible-dust control coordination proposal for the
+  MAGNESIUM FINISHING CELL (grinding/deburring/polishing of magnesium
+  castings) against a piece of finishing equipment. ALWAYS `:stake
+  :coordination/dust-hazard` -- magnesium finishing dust is combustible
+  and reacts with water, so every dust-control proposal goes to a human
+  plant supervisor regardless of confidence. The advisor names the
+  relevant dust-explosivity measurements as `:unmeasured` -- it never
+  supplies a Kst/MIE/MEC/collector-capacity value (the governor
+  HARD-holds any such value as a fabricated measurement)."
+  [db {:keys [subject value]}]
+  (let [equipment-id (:equipment-id value)
+        eq (and equipment-id (store/equipment-unit db equipment-id))]
+    {:summary    (str subject " 向け可燃性粉塵対策調整提案 (" (:control-measure value) ")"
+                      (when eq (str " equipment=" equipment-id)))
+     :rationale  (str "control-measure=" (:control-measure value)
+                      " unmeasured=" (pr-str (:unmeasured value))
+                      (when eq
+                        (str " equipment-verified?=" (registry/equipment-verified? eq)
+                             " equipment-registered?=" (registry/equipment-registered? eq))))
+     :cites      (if eq [equipment-id] [])
+     :effect     :dust-control/propose
+     :value      value
+     :stake      :coordination/dust-hazard
+     :confidence (if eq 0.9 0.3)}))
 
 (defn infer
   "Route a request to the right proposal generator.
@@ -184,6 +209,7 @@
     :flag-safety-concern       (flag-safety-concern db request)
     :coordinate-shipment       (coordinate-shipment db request)
     :coordinate-equipment-procurement (coordinate-equipment-procurement db request)
+    :coordinate-dust-control   (coordinate-dust-control db request)
     {:summary "未対応の操作" :rationale (str op) :cites []
      :effect :noop :stake nil :confidence 0.0}))
 
@@ -205,13 +231,16 @@
        ":cites(使った事実キーのベクタ) "
        ":effect(:batch/upsert|:maintenance/schedule|"
        ":safety-concern/flag|:shipment/propose|"
-       ":equipment-procurement/propose) "
-       ":stake(:coordination/safety-concern か nil) :confidence(0..1)。\n"
+       ":equipment-procurement/propose|:dust-control/propose) "
+       ":stake(:coordination/safety-concern|:coordination/equipment-procurement"
+       "|:coordination/dust-hazard か nil) :confidence(0..1)。\n"
        "重要: 未検証または未登録の設備・バッチに対する作業を提案してはいけません。"
        "溶解炉・ダイカストマシン・注湯ライン等の設備の直接操作(actuate)を絶対に提案してはいけません"
        "(この actor は提案のみを行い、実行は一切行いません)。"
        "設備調達提案では、実測していない価格・納期・能力・認証を絶対に生成してはいけません"
        "(未計測値は提案から省く)。発注・支払・売買契約は人間の承認行為です。"
+       "粉塵爆発特性値(Kst・MIE・MEC・集塵機容量)を値として提案してはいけません"
+       " -- 測定値は必ず :unmeasured として名指します(捏造は禁止)。"
        "出荷量を偽って報告してはいけません。"))
 
 (defn- facts-for [st {:keys [op subject value]}]
@@ -222,6 +251,8 @@
                                                   (store/equipment-unit st (:equipment-id value)))}
     :coordinate-shipment        {:batch (store/batch st (:batch-id value))}
     :coordinate-equipment-procurement {}
+    :coordinate-dust-control    {:equipment (and (:equipment-id value)
+                                                  (store/equipment-unit st (:equipment-id value)))}
     {}))
 
 (defn- parse-proposal
