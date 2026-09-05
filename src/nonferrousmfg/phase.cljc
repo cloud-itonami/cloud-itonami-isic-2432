@@ -34,7 +34,8 @@
 (def write-ops
   #{:log-production-batch :schedule-maintenance
     :flag-safety-concern :coordinate-shipment
-    :coordinate-equipment-procurement})
+    :coordinate-equipment-procurement
+    :coordinate-dust-control})
 
 ;; NOTE the invariant: `:schedule-maintenance` is a member of
 ;; `write-ops` (governor-gated like any write) but is NEVER a member of
@@ -44,16 +45,20 @@
 ;; commitment), so the governor's confidence/high-stakes gate and the
 ;; phase auto sets BOTH keep it out of auto-commit. Do not add it to
 ;; any phase's `:auto` set.
+;; for `:coordinate-dust-control` -- a combustible-dust coordination
+;; measure touches hazardous (magnesium dust) operating conditions, so
+;; it always needs a human plant supervisor's approval and is never
+;; auto-committed at any phase.
 (def phases
   "phase -> {:label .. :writes <ops allowed to write> :auto <ops allowed
   to auto-commit when governor-clean>}."
   {0 {:label "read-only"           :writes #{}                                            :auto #{}}
    1 {:label "assisted-intake"     :writes #{:log-production-batch}                        :auto #{}}
    2 {:label "assisted-coordinate" :writes #{:log-production-batch :flag-safety-concern
-                                             :coordinate-shipment}                          :auto #{}}
+                                             :coordinate-shipment
+                                             :coordinate-dust-control}                     :auto #{}}
    3 {:label "supervised-auto"     :writes write-ops
       :auto #{:log-production-batch}}})
-
 (def default-phase 3)
 
 (defn gate

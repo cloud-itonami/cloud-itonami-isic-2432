@@ -20,7 +20,7 @@
     (is (true? (:registered? (store/equipment-unit s "furnace-001"))))
     (is (false? (:verified? (store/equipment-unit s "diecast-002"))))
     (is (false? (:registered? (store/equipment-unit s "diecast-002"))))
-    (is (= ["diecast-002" "furnace-001"] (mapv :id (store/all-equipment s))))
+    (is (= ["diecast-002" "finish-001" "finish-002" "furnace-001"] (mapv :id (store/all-equipment s))))
     (is (= [] (store/ledger s)))
     (is (= [] (store/maintenance-history s)))
     (is (= [] (store/shipment-history s)))

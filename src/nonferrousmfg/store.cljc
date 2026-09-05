@@ -80,6 +80,11 @@
   (next-procurement-sequence [s] "next procurement-number sequence")
   (maintenance-already-scheduled? [s maintenance-id] "has this maintenance window already been scheduled?")
   (procurement-already-proposed? [s procurement-id] "has this equipment-procurement draft already been proposed?")
+  (dust-control [s id] "a combustible-dust-control coordination DRAFT by id")
+  (all-dust-controls [s])
+  (dust-control-history [s] "the append-only dust-control coordination history (nonferrousmfg.registry drafts)")
+  (next-dust-control-sequence [s] "next dust-control-number sequence")
+  (dust-control-already-proposed? [s dust-control-id] "has this dust-control proposal already been coordinated?")
   (commit-record! [s record] "apply a committed op's record to the SSoT")
   (append-ledger! [s fact] "append one immutable decision fact")
   (get-records [s] "the generic id -> raw-record map (domain-agnostic commit-record! path)")
@@ -114,7 +119,13 @@
                   :last-maintenance-date "2026-05-01"}
    "diecast-002" {:id "diecast-002" :kind :die-casting-machine
                   :verified? false :registered? false
-                  :last-maintenance-date nil}})
+                  :last-maintenance-date nil}
+   "finish-001" {:id "finish-001" :kind :magnesium-finishing-cell
+                 :verified? true :registered? true
+                 :last-maintenance-date "2026-06-01"}
+   "finish-002" {:id "finish-002" :kind :magnesium-finishing-cell
+                 :verified? false :registered? false
+                 :last-maintenance-date nil}})
 
 ;; ----------------------------- shared commit logic -----------------------------
 
@@ -149,6 +160,16 @@
     {:result result
      :patch {:proposed? true
              :procurement-number (get result "procurement_number")}}))
+(defn- propose-dust-control!
+  "Backend-agnostic `:dust-control/propose` -- drafts the combustible-
+  dust-control coordination record via `nonferrousmfg.registry` and
+  returns {:result .. :patch ..} for the caller to persist."
+  [s dust-control-id equipment-id]
+  (let [seq-n (next-dust-control-sequence s)
+        result (registry/register-dust-control dust-control-id equipment-id seq-n)]
+    {:result result
+     :patch {:proposed? true
+             :dust-control-number (get result "dust_control_number")}}))
 
 ;; ----------------------------- MemStore (default) -----------------------------
 
@@ -174,6 +195,12 @@
     (boolean (get-in @a [:maintenance maintenance-id :scheduled?])))
   (procurement-already-proposed? [_ procurement-id]
     (boolean (get-in @a [:procurement procurement-id :proposed?])))
+  (dust-control [_ id] (get-in @a [:dust-controls id]))
+  (all-dust-controls [_] (sort-by :id (vals (:dust-controls @a))))
+  (dust-control-history [_] (:dust-control-history @a))
+  (next-dust-control-sequence [_] (:dust-control-sequence @a 0))
+  (dust-control-already-proposed? [_ dust-control-id]
+    (boolean (get-in @a [:dust-controls dust-control-id :proposed?])))
   (get-records [_] (:records @a))
   (commit-record! [s {:keys [effect path value] :as record}]
     (cond
@@ -224,6 +251,17 @@
                        (update :procurement-history registry/append result))))
         result)
 
+      (= effect :dust-control/propose)
+      (let [dust-control-id (first path)
+            equipment-id (:equipment-id value)
+            {:keys [result patch]} (propose-dust-control! s dust-control-id equipment-id)]
+        (swap! a (fn [state]
+                   (-> state
+                       (update :dust-control-sequence (fnil inc 0))
+                       (update-in [:dust-controls dust-control-id] merge (assoc value :id dust-control-id) patch)
+                       (update :dust-control-history registry/append result))))
+        result)
+
       ;; Domain-agnostic path: a raw record with an :id and no :effect
       ;; is written verbatim into the generic `records` map -- the
       ;; store-level primitive underneath the domain-specific dispatch
@@ -242,10 +280,12 @@
   "A fresh, empty MemStore."
   []
   (->MemStore (atom {:batches {} :equipment {} :maintenance {} :shipments {}
-                     :procurement {} :records {} :safety-concerns []
+                     :procurement {} :dust-controls {}
+                     :records {} :safety-concerns []
                      :ledger [] :maintenance-sequence 0 :maintenance-history []
                      :shipment-sequence 0 :shipment-history []
-                     :procurement-sequence 0 :procurement-history []})))
+                     :procurement-sequence 0 :procurement-history []
+                     :dust-control-sequence 0 :dust-control-history []})))
 
 (defn sample-data!
   "Seeds `s` (a MemStore) with a small, self-contained batch + equipment
