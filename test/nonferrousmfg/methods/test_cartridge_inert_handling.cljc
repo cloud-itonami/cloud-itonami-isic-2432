@@ -138,3 +138,72 @@
   (let [r (cih/screen-equipment-offer base-offer)]
     (is (contains? (set (get-in r [:effect :effect/screening :unmeasured-fields]))
                    :price))))
+
+
+;; ── plan-cartridge-to-reactor-dispatch ─────────────────────────────────────
+
+(def ^:private base-dispatch
+  {:activity/id "act-006"
+   :cartridge-serial "car-0001"
+   :cartridge-class :reactor-feed
+   :reactor-serial "RX-2026-0007"
+   :leak-test-record-id "lt-car-0001"
+   :interlocks #{:reactor-depressurized-verified :h2-detector-armed
+                 :ignition-sources-cleared :inert-sequence-verified}
+   :human-approval {:approver-did "did:web:plant-supervisor.etzhayyim.com"
+                    :approved-at "2026-08-31T12:05:00Z"
+                    :scope #{:couple-cartridge-to-reactor}}
+   :requested-effect :simulate-dispatch})
+
+(deftest valid-dispatch-is-approved-as-simulate-only
+  (let [r (cih/plan-cartridge-to-reactor-dispatch base-dispatch)]
+    (is (= :approved (:decision r)))
+    (is (= :simulate-dispatch-only (get-in r [:effect :effect/kind])))
+    (is (false? (get-in r [:effect :effect/machine-command])))
+    (is (= "RX-2026-0007" (get-in r [:effect :effect/dispatch :reactor-serial])))
+    (is (= :reactor-feed (get-in r [:effect :effect/dispatch :cartridge-class])))
+    (is (false? (:audit/bot-commanded-equipment (:audit r))))
+    (is (contains? (set (:audit/gates-checked (:audit r))) :reactor-genealogy-recorded))))
+
+(deftest dispatch-missing-activity-id-refuses
+  (is (= :refused (:decision (cih/plan-cartridge-to-reactor-dispatch
+                              (dissoc base-dispatch :activity/id))))))
+
+(deftest dispatch-missing-cartridge-serial-refuses
+  (is (= :refused (:decision (cih/plan-cartridge-to-reactor-dispatch
+                              (dissoc base-dispatch :cartridge-serial))))))
+
+(deftest dispatch-non-reactor-feed-class-refuses
+  (let [r (cih/plan-cartridge-to-reactor-dispatch
+           (assoc base-dispatch :cartridge-class :storage))]
+    (is (= :refused (:decision r)))
+    (is (re-find #"reactor-feed" (:audit/refusal (:audit r))))))
+
+(deftest dispatch-missing-reactor-serial-refuses
+  (is (= :refused (:decision (cih/plan-cartridge-to-reactor-dispatch
+                              (dissoc base-dispatch :reactor-serial))))))
+
+(deftest dispatch-missing-leak-evidence-defers-not-invented
+  (let [r (cih/plan-cartridge-to-reactor-dispatch
+           (dissoc base-dispatch :leak-test-record-id))]
+    (is (= :refused (:decision r)))
+    (is (re-find #"unmeasured" (:audit/refusal (:audit r))))))
+
+(deftest dispatch-incomplete-interlocks-refuse
+  (is (= :refused (:decision (cih/plan-cartridge-to-reactor-dispatch
+                              (assoc base-dispatch :interlocks #{:h2-detector-armed}))))))
+
+(deftest dispatch-machine-command-refused-unconditionally
+  (let [r (cih/plan-cartridge-to-reactor-dispatch
+           (assoc base-dispatch :requested-effect :command-couple))]
+    (is (= :refused (:decision r)))
+    (is (re-find #"no-physical-command" (:audit/refusal (:audit r))))))
+
+(deftest dispatch-missing-human-approval-defers-never-approves
+  (is (= :refused (:decision (cih/plan-cartridge-to-reactor-dispatch
+                              (dissoc base-dispatch :human-approval))))))
+
+(deftest dispatch-wrong-approval-scope-refuses
+  (is (= :refused (:decision (cih/plan-cartridge-to-reactor-dispatch
+                              (assoc-in base-dispatch [:human-approval :scope]
+                                        #{:transfer}))))))
