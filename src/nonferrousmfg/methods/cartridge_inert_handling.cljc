@@ -260,3 +260,100 @@
                               "procurement is a human decision; screening evidence assembled only"
                               (conj @gates :human-approval-required :no-financial-commitment)
                               effect)}))))
+
+
+;; ── activity 4: cartridge -> reactor dispatch (hazardous — human approval) ─
+
+(def ^:private required-dispatch-interlocks
+  "Interlocks required before a sealed reactor-feed cartridge may be coupled
+  into a hydrogen reactor for integration (retained in-house cartridge
+  integration). Coupling a reactive-powder cartridge next to hydrogen service
+  is hazardous: the reactor must be verified depressurized, H2 detector armed,
+  ignition sources cleared, and the inert sequence verified."
+  #{:reactor-depressurized-verified
+    :h2-detector-armed
+    :ignition-sources-cleared
+    :inert-sequence-verified})
+
+(defn plan-cartridge-to-reactor-dispatch
+  "Dispatch one sealed reactor-feed cartridge into a named hydrogen reactor for
+  integration. This is the retained in-house cartridge-integration handoff: the
+  reactor serial is recorded as a MES genealogy join to the reactor's own
+  fabrication cell, so a reactor never admits an untraced cartridge.
+
+  `req` keys (all measured values must be supplied by the caller; this function
+  invents none — a missing leak record stays :unmeasured, never substituted):
+    :activity/id            string
+    :cartridge-serial       string — the sealed cartridge being dispatched
+    :cartridge-class        keyword — must be :reactor-feed (reactor admission)
+    :reactor-serial         string — the named hydrogen reactor (MES join)
+    :leak-test-record-id    string — the cartridge's recorded leak-test record
+    :interlocks             collection of dispatch interlocks (reactor
+                            depressurized verified, H2 detector armed, ignition
+                            sources cleared, inert sequence verified)
+    :human-approval         {:approver-did string  :approved-at string
+                             :scope #{:couple-cartridge-to-reactor}}
+    :requested-effect       :simulate-dispatch (the only admissible kind) or
+                            :command-couple (refused unconditionally)
+
+  Returns {:decision :approved|:refused :effect {...} :audit {...}}."
+  [req]
+  (let [activity-id (get req :activity/id "")
+        gates (atom [])
+        note (fn [g] (swap! gates conj g))
+        cartridge-class (some-> req :cartridge-class keyword)
+        refusal
+        (cond
+          (not (present? activity-id))
+          (do (note :activity-id-present)
+              "activity-id: a cartridge->reactor dispatch needs an :activity/id")
+
+          (not (present? (get req :cartridge-serial)))
+          (do (note :cartridge-serial-present)
+              "cartridge-serial: the sealed cartridge being dispatched must be named")
+
+          (not (= :reactor-feed cartridge-class))
+          (do (note :reactor-feed-class-required)
+              (str "cartridge-class: reactor admission requires :reactor-feed; got "
+                   (pr-str (get req :cartridge-class))))
+
+          (not (present? (get req :reactor-serial)))
+          (do (note :reactor-serial-present)
+              "reactor-serial: the hydrogen reactor receiving the cartridge must be named for MES genealogy")
+
+          (not (present? (get req :leak-test-record-id)))
+          (do (note :leak-record-required)
+              "unmeasured: :leak-test-record-id (the cartridge's recorded leak test) is required; a sealed cartridge with missing leak evidence stays :unmeasured — never substituted")
+
+          (not (set/subset? required-dispatch-interlocks
+                            (set (map keyword (get req :interlocks)))))
+          (do (note :dispatch-interlocks-complete)
+              (str "safety: dispatch interlocks incomplete; required "
+                   (pr-str (sort required-dispatch-interlocks))
+                   " got " (pr-str (sort (set (map keyword (get req :interlocks)))))))
+
+          (= :command-couple (get req :requested-effect))
+          (do (note :no-physical-command)
+              "no-physical-command: the bot may design and simulate but may not command physical equipment; only :simulate-dispatch is admissible")
+
+          (not (and (map? (get req :human-approval))
+                    (present? (get-in req [:human-approval :approver-did]))
+                    (present? (get-in req [:human-approval :approved-at]))
+                    (contains? (set (map keyword (get-in req [:human-approval :scope])))
+                               :couple-cartridge-to-reactor)))
+          (do (note :human-approval-required)
+              "human-approval: coupling a reactive-powder cartridge into a hydrogen reactor is a hazardous operation; a named human approver with :couple-cartridge-to-reactor scope must be recorded — absence defers, never approves")
+
+          :else nil)]
+    (if refusal
+      (refuse activity-id refusal @gates)
+      (let [effect {:effect/kind :simulate-dispatch-only
+                    :effect/machine-command false
+                    :effect/dispatch {:cartridge-serial (:cartridge-serial req)
+                                      :cartridge-class cartridge-class
+                                      :reactor-serial (:reactor-serial req)
+                                      :leak-test-record-id (:leak-test-record-id req)
+                                      :interlocks (sort (set (map keyword (:interlocks req))))}}]
+        {:decision :approved
+         :effect effect
+         :audit (audit-record activity-id :approved "" (conj @gates :human-approval-approved :no-physical-command :reactor-genealogy-recorded) effect)}))))
