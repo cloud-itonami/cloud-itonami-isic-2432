@@ -32,7 +32,7 @@
   on langgraph/langchain — this layer is the same shape as igata's accepted
   magnesium-HPDC methods contract, PR cloud-itonami/igata#2)."
   (:require [clojure.set :as set]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 ;; ── constants ──────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@
                    (pr-str (sort required-interlocks))
                    " got " (pr-str (sort (set (map keyword (get req :interlocks)))))))
 
-          (str/includes? (str/lower-case (str (get req :suppression-agent))) "water")
+          (str/includes? (str/lower (str (get req :suppression-agent))) "water")
           (do (note :suppression-not-water-based)
               "safety: water-based suppression in a reactive-powder cell is refused outright (Mg/MgH2 + water is an ignition and hydrogen-evolution hazard)")
 
