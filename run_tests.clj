@@ -1,0 +1,29 @@
+#!/usr/bin/env bb
+;; run_tests.clj — fast, standalone design-layer check for cloud-itonami-isic-2432.
+;;
+;; Unlike `clojure -M:test` (which pulls langgraph/langchain from the
+;; kotoba-lang monorepo and only resolves inside the workspace checkout),
+;; this runner drives ONLY the PURE decision-contract namespaces — the
+;; magnesium manufacturing cells (cartridge dry-inert handling,
+;; magnesium MES traceability) plus the stdlib-only foundry plumbing
+;; (phase, registry, store). They are self-contained (.cljc, stdlib only)
+;; so a standalone fork can verify its manufacturing contracts with one
+;; documented command, exactly like the sibling design actor igata
+;; (`bb run_tests.clj`).
+;;
+;; The langgraph-dependent governor/operation/procurement suites are NOT
+;; wired here; they stay on `clojure -M:test`.
+(require '[babashka.classpath :as cp]
+         '[babashka.fs :as fs]
+         '[clojure.test :as t])
+(let [root (fs/parent (fs/absolutize *file*))]
+  (cp/add-classpath (str root "/src"))
+  (cp/add-classpath (str root "/test")))
+(def suites '[nonferrousmfg.methods.test-cartridge-inert-handling
+              nonferrousmfg.magnesium-traceability-test
+              nonferrousmfg.phase-test
+              nonferrousmfg.registry-test
+              nonferrousmfg.store-contract-test])
+(apply require suites)
+(let [{:keys [fail error]} (apply t/run-tests suites)]
+  (System/exit (if (zero? (+ fail error)) 0 1)))

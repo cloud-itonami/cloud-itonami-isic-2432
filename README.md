@@ -80,7 +80,14 @@ Classic governed-actor pattern (`nonferrousmfg.operation/build`, a langgraph-clj
 ## Development
 
 ```bash
-# Run tests (top-level deps.edn already pins langgraph+langchain local/root)
+# Fast, standalone design-layer check (PURE manufacturing contracts --
+# cartridge dry-inert handling, magnesium MES traceability, phase/registry/store).
+# stdlib-only .cljc -> runs under babashka in a standalone fork outside the
+# monorepo; does NOT need kotoba-lang/langgraph+langchain local checkouts.
+bb run_tests.clj
+
+# Run the full JVM suite (top-level deps.edn pins langgraph+langchain local/root;
+# resolves only inside the workspace checkout)
 clojure -M:test
 
 # Run tests via the workspace :dev override alias (equivalent, kept for sibling-repo parity)
