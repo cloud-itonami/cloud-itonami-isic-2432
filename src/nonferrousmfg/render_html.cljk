@@ -7,7 +7,7 @@
   (`nonferrousmfg.operation` StateGraph -> `nonferrousmfg.advisor` ->
   `nonferrousmfg.governor` -> `nonferrousmfg.phase` ->
   `nonferrousmfg.store`) via `langgraph.graph/run*`, exactly as
-  `clojure -M:dev:run` does, and renders the page from the resulting
+  `kbb -M:dev:run` does, and renders the page from the resulting
   real store + append-only ledger.
 
   NOTHING on the generated page is hand-typed telemetry. Every batch
@@ -23,12 +23,12 @@
   `MNT-000000`/`SHP-000000` from a counter, never from a clock), so no
   timestamp, random id or wall-clock value reaches the page. Two runs
   from the same seed are byte-identical (verify with
-  `clojure -M:dev:render-html a.html && clojure -M:dev:render-html b.html
+  `kbb -M:dev:render-html a.html && kbb -M:dev:render-html b.html
   && cmp a.html b.html`). This renderer therefore needs no injected
   clock; if a future backend does, pass an epoch-ms constant in from
   the caller rather than reading one here.
 
-  Usage: `clojure -M:dev:render-html [out-file]`
+  Usage: `kbb -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [jp-go-dds.skin]
             [kotoba.lang.text :as str]
@@ -460,7 +460,7 @@
      "</main>\n"
      "<footer>\n"
      "  <p class=\"muted\">Generated at build time by <code>nonferrousmfg.render-html</code> "
-     "(<code>clojure -M:dev:render-html</code>) from a real "
+     "(<code>kbb -M:dev:render-html</code>) from a real "
      "<code>nonferrousmfg.operation</code> actor run. Deterministic: no timestamps, "
      "no random ids — reruns from the same seed are byte-identical.</p>\n"
      "</footer>\n"
