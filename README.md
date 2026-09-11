@@ -84,23 +84,23 @@ Classic governed-actor pattern (`nonferrousmfg.operation/build`, a langgraph-clj
 # cartridge dry-inert handling, magnesium MES traceability, phase/registry/store).
 # stdlib-only .cljc -> runs under babashka in a standalone fork outside the
 # monorepo; does NOT need kotoba-lang/langgraph+langchain local checkouts.
-bb run_tests.cljk
+kbb run_tests.cljk
 
 # Run the full JVM suite (top-level deps.edn pins langgraph+langchain local/root;
 # resolves only inside the workspace checkout)
-clojure -M:test
+kbb -M:test
 
 # Run tests via the workspace :dev override alias (equivalent, kept for sibling-repo parity)
-clojure -M:dev:test
+kbb -M:dev:test
 
 # Run the demo
-clojure -M:dev:run
+kbb -M:dev:run
 
 # Regenerate docs/samples/operator-console.html from a REAL actor run
-clojure -M:dev:render-html
+kbb -M:dev:render-html
 
 # Lint
-clojure -M:lint
+kbb -M:lint
 ```
 
 ### Operator console (`docs/samples/operator-console.html`)
@@ -128,8 +128,8 @@ reruns from the same seed are byte-identical:
 
 ```bash
 S=$(mktemp -d)
-clojure -M:dev:render-html "$S/a.html"
-clojure -M:dev:render-html "$S/b.html"
+kbb -M:dev:render-html "$S/a.html"
+kbb -M:dev:render-html "$S/b.html"
 cmp "$S/a.html" "$S/b.html"   # byte-identical
 ```
 
