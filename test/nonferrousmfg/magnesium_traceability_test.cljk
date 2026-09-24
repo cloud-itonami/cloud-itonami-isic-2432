@@ -1,7 +1,7 @@
 (ns nonferrousmfg.magnesium-traceability-test
   "Focused tests for the magnesium MES traceability decision contract.
   Pure functions -- no store, no graph, no LLM, no equipment."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [nonferrousmfg.magnesium-traceability :as mt]))
 
 (def good-batch
