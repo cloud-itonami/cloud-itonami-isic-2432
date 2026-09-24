@@ -1,0 +1,45 @@
+;; What this vertical's robot physically does, declared for
+;; kotoba.robotics.process (kotoba-lang/robotics). `kbb -M:dev:physics` runs it.
+;;
+;; The README has no "Robotics premise" section; its Scope names the plant
+;; this actor coordinates (ISIC 2432): a non-ferrous foundry melting
+;; aluminium, copper, zinc, brass, bronze or magnesium alloys and pouring
+;; into sand/permanent moulds or die casting under high pressure, then
+;; shakeout. The physical work of that plant taken here: holding a die-cast
+;; aluminium part in the die until it is cool enough to eject, the
+;; extraction robot unloading the casting, and the QC tensile test of a
+;; separately cast test bar from each melt.
+;;
+;; Every number without a cited source is marked `estimate` in its :basis.
+;; Replacing an estimate with a sourced value is this bot's growth work.
+{:physics/schema "itonami.physical-ai.spec.v1"
+ :repo "cloud-itonami/cloud-itonami-isic-2432"
+ :cases
+ [{:id :die-dwell-before-ejection
+   :kind :thermal
+   :procedure "aluminium part injected at 660 C cools against the 200 C die (die face held at die temperature, part mid-wall adiabatic) until its mid-wall falls below 400 C for ejection; sweep = half wall thickness"
+   :params {:thickness-m 0.0015 :conductivity-w-mk 150.0 :density-kg-m3 2600.0 :specific-heat-j-kgk 1000.0
+            :t0-c 660.0 :t-hot-c 200.0 :front-fixed? true :h-back-w-m2k 0.0
+            :threshold-c 400.0 :threshold-direction :falling :duration-s 5.0 :nodes 7}
+   :sweep {:param :thickness-m :values [0.001 0.0015 0.0025 0.004 0.006]}
+   :quantity :time-to-threshold-s
+   :limit {:max 0.1 :basis "estimate: 0.1 s taken as the conductive part of the die dwell; latent heat and the die/part contact resistance, which dominate real dwell times, are not modelled"}
+   :boundary {:lo 0.0005 :hi 0.02}}
+  {:id :casting-extraction
+   :kind :manipulator
+   :procedure "extraction robot takes the shot (casting plus runner and overflows) out of the open die and places it in the trim press"
+   :params {:l1-m 0.70 :l2-m 0.60 :m1-kg 14.0 :m2-kg 9.0
+            :from [0.90 0.60] :to [0.50 0.10] :duration-s 2.0 :steps 400}
+   :sweep {:param :payload-kg :values [2.0 5.0 10.0 15.0 25.0]}
+   :quantity :peak-tau1-nm
+   :limit {:max 400.0 :basis "estimate: continuous shoulder torque of a ~30 kg-payload die-casting extraction arm class"}
+   :boundary {:lo 0.5 :hi 80.0}}
+  {:id :melt-test-bar
+   :kind :material
+   :procedure "QC robot pulls the separately cast test bar (12.5 mm diameter, 100 mm gauge) of each aluminium melt to 35 kN; the 0.2 % offset yield force is judged; sweep = the melt's yield stress"
+   :params {:length-m 0.10 :area-m2 1.227e-4 :youngs-modulus-pa 70.0e9 :hardening-pa 0.7e9
+            :density-kg-m3 2680.0 :max-force-n 35000.0}
+   :sweep {:param :yield-stress-pa :values [150.0e6 170.0e6 190.0e6 210.0e6 230.0e6]}
+   :quantity :yield-force-n
+   :limit {:min 23313.0 :basis "estimate: a customer drawing calling for 190 MPa minimum yield on a heat-treated aluminium casting alloy (190 MPa x 122.7 mm2)"}
+   :boundary {:lo 120.0e6 :hi 260.0e6}}]}
