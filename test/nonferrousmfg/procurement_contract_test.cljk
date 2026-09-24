@@ -12,7 +12,7 @@
     any phase: approving a procurement draft becomes a real financial
     commitment, which is always the human approver's act. Every
     decision (commit OR hold) leaves exactly one ledger fact."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [langgraph.graph :as g]
             [nonferrousmfg.phase :as phase]
             [nonferrousmfg.store :as store]

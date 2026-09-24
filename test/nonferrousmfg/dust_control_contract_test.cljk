@@ -15,7 +15,7 @@
     - the same proposal coordinated twice -> HARD hold (dedicated
       `:proposed?` fact);
     - rejected approval -> hold, no SSoT mutation."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [langgraph.graph :as g]
             [nonferrousmfg.store :as store]
             [nonferrousmfg.operation :as op]))

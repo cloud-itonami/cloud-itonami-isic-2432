@@ -2,7 +2,7 @@
   "Tests for the cartridge dry-inert-handling cell decision contract.
   Mirrors the accepted igata methods-contract test shape
   (test/igata/methods/test_magnesium_hpdc.cljc, PR cloud-itonami/igata#2)."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [nonferrousmfg.methods.cartridge-inert-handling :as cih]))
 
 (def ^:private base-req
